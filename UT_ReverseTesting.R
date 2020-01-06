@@ -160,8 +160,8 @@ test_that("ReversionTest: Precondition Checks", {
 
 test_that("ReversionTest: Diff-Functions", {
   # Diff Functions ----
-  f1 <- function(x, y) x*y
-  f2 <- function(x, y) x/y
+  f1 <- function(x, y) x*y # * and / actions are relatively safe when it comes to floating point "drift"
+  f2 <- function(x, y) x/y # * and / actions are relatively safe
   ArgsF1 <- "f1"
   ArgsF2 <- "f2"
   Args3 <- list(x = c(-4:(-1), 1:4), y = c(-4:(-1), 1:4))
@@ -172,32 +172,16 @@ test_that("ReversionTest: Diff-Functions", {
   expect_identical(ncol(Df), as.integer(length(Args3)+2))
   expect_identical(nrow(Df), as.integer(LenExpected))
   # Values should be close to zero with subtraction as delta-function
-  expect_equal(Df$Delta, rep(0, LenExpected))
+  expect_equal(Df$Delta, rep(TRUE, LenExpected))
   
   # Values should be close to zero with ratio as delta-function
   Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = function(x, y) y/x)
-  expect_equal(Df$Delta, rep(1, LenExpected))
+  expect_equal(unlist(Df$Delta), rep(1, LenExpected))
   
+  MyDiff <- function(x, y) 9
+  Args3 <- list(x = 1:99, y = 99:1)
+  LenExpected <- prod(unlist(lapply(Args3, length)))
+  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = MyDiff)
+  expect_equal(unlist(Df$Delta), rep(9, LenExpected))
 })
 
-#suppressWarnings({
-#})
-
-
-# describe("Test 'logit' with specific values", {
-#   it("ln(1) = 0", {
-#     # logit for 1/2 is zero
-#     expect_identical(0, logit(0.5))
-#   })
-#   it("values taken from a third-party source",
-#      {
-#        # lower range
-#        expect_equal(-1.3863, logit(0.2), tolerance = 0.0001)
-#      })
-#   it("must be equal to qlogis(p)", {
-#     SampleSize <- 1000
-#     TestCase <- runif(SampleSize) # get p
-#     expect_equal(qlogis(TestCase), 
-#                  logit(TestCase))
-#   })
-# })

@@ -11,7 +11,7 @@
 # 0.1 + 0.2 == 0.3 ==> FALSE
 # (0.1 + 0.2) - 0.3 ==>  5.551115e-17
 #
-# Speed improvements
+# Further work probably on speed improvements?
 # https://cran.r-project.org/web/packages/doParallel/vignettes/gettingstartedParallel.pdf
 
 
@@ -89,8 +89,9 @@ eps <- function(x = 1.0) {
 }
 
 
-#' .DeltaEps    ############TODO############
-#' @describeIn .NearlyEqual Quantify difference when |x-y| > eps
+#' .DeltaEps    ############TODO############ Not yet finished
+#' @describeIn .NearlyEqual Quantify difference when |x-y| > eps (unlike .NearlyEqual 
+#' that gives only TRUE/FALSE).
 .DeltaEps <- function(x, y, eps = 1e-10) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
@@ -111,6 +112,8 @@ eps <- function(x = 1.0) {
   Result
 }
 
+
+# REVERSION TEST  ----
 
 #' ReversionTest
 #' Tests the precision of two reciprocal functions. It evaluates the differences between 
@@ -181,12 +184,26 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) 
   
   # Go, iterate!
   Df$Result <- apply(Df, 1, .forwardreverse, ...)
-  Df["Delta"]  <- delta(Df[KeyVar], Df$Result)
+  Df["Delta"]  <- delta(Df[[KeyVar]], Df$Result)
   
   return(Df)
 }
 
+# Uncomment one line and source this to debug ----
 #Result <- ReversionTest("pnorm", "qnorm", ToIterate = list(c(-0.5, -0.25, 0, 0.25, 0.5), mean = -4:4), sd = 1)
 #Result <- ReversionTest("qlogitnorm", "plogitnorm", ToIterate =  list(mean = -4:4, sd=))
 #Result <- ReversionTest("pnorm", "qnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3)
 #Result <- ReversionTest("pnorm", "qnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3, DiffFunc = sqrt)#function(x, y) y/x)
+
+
+# f1 <- function(x, y) x*y # * and / actions are relatively safe when it comes to floating point "drift"
+# f2 <- function(x, y) x/y # * and / actions are relatively safe
+# ArgsF1 <- "f1"
+# ArgsF2 <- "f2"
+# Args3 <- list(x = c(-4:(-1), 1:4), y = c(-4:(-1), 1:4))
+# LenExpected <- prod(unlist(lapply(Args3, length)))
+# Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1)
+
+# Values should be close to zero with subtraction as delta-function
+#Result <- unlist(Df$Delta)
+#Result, rep(FALSE, LenExpected)
