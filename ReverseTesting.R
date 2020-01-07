@@ -1,19 +1,4 @@
 
-# References
-# https://www.r-bloggers.com/numerical-pitfalls-in-computing-variance/
-# R Inferno
-# https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
-# https://softwareengineering.stackexchange.com/questions/202843/solutions-for-floating-point-rounding-errors
-# https://docs.python.org/3/tutorial/floatingpoint.html
-# * https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf
-# * https://www.volkerschatz.com/science/float.html
-# 0.1000000000000000055511151231257827021181583404541015625 == 0.1 ==> TRUE
-# 0.1 + 0.2 == 0.3 ==> FALSE
-# (0.1 + 0.2) - 0.3 ==>  5.551115e-17
-#
-# Further work probably on speed improvements?
-# https://cran.r-project.org/web/packages/doParallel/vignettes/gettingstartedParallel.pdf
-
 
 # FLOATING POINT PRECISION ----
 
@@ -81,7 +66,8 @@ eps <- function(x = 1.0) {
   Result <- Diff / (X.Abs + Y.Abs) < eps
   # Correct, where x or x_ is zero or both are extremely close to it
   # Relative error is less meaningful here
-  Which <- which(x == 0 || y == 0 || Diff < .Machine$double.xmin)
+  # Jan Seifert: probably, the author made a mistake here. TODO: VERIFY
+  Which <- which(x == 0 | y == 0 | Diff < .Machine$double.xmin)
   Result[Which] <- (Diff[Which] < eps * .Machine$double.xmin)
   # Handles infinities
   Result[which(x == y)] <- TRUE
@@ -97,18 +83,24 @@ eps <- function(x = 1.0) {
   Y.Abs <- abs(y)
   Diff = abs(x - y)
   
-  # Use relative error, by default
-  Which <- which( Diff / (X.Abs + Y.Abs) < eps )
-  Result[Which] <- 0
-  Result[-Which] <- Diff / (X.Abs + Y.Abs)
+  # Handles infinities
+  # Set all to 0 first, correct later where x != y
+  Which1 <- which(x == y)
+  Result <- rep(0, length(x))
   
   # Correct, where x or y is zero or both are extremely close to it
   # Relative error is less meaningful here
-  Which <- which(x == 0 || y == 0 || Diff < .Machine$double.xmin)
-  Result[Which] <- (Diff[Which] < eps * .Machine$double.xmin)
+  # Jan Seifert: probably, the author made a mistake here. TODO: VERIFY
+  Which2 <- which(x == 0 | y == 0 | Diff < .Machine$double.xmin)
+  Which2 <- setdiff(Which2, Which1)
+  Result[Which2] <- eps * .Machine$double.xmin
 
-  # Handles infinities
-  Result[which(x == y)] <- 0
+  # Use relative error, by default
+  ErrorRel <- Diff / (X.Abs + Y.Abs)
+  Which3 <- which( ErrorRel > eps )
+  Which3 <- setdiff(setdiff(Which3, Which2), Which1)
+  Result[Which3] <- ErrorRel[Which3]
+
   Result
 }
 
@@ -132,6 +124,7 @@ eps <- function(x = 1.0) {
 ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) {
   .forwardreverse <- function(x, ...) {
     ## example: do.call("dnorm", list(-1:1, sd = -2, mean = 0))
+    
     Args.Forward <- append(x, list(...))
     Result <- do.call(f, Args.Forward)
     Args.Backward <- x
@@ -189,21 +182,4 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) 
   return(Df)
 }
 
-# Uncomment one line and source this to debug ----
-#Result <- ReversionTest("pnorm", "qnorm", ToIterate = list(c(-0.5, -0.25, 0, 0.25, 0.5), mean = -4:4), sd = 1)
-#Result <- ReversionTest("qlogitnorm", "plogitnorm", ToIterate =  list(mean = -4:4, sd=))
-#Result <- ReversionTest("pnorm", "qnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3)
-#Result <- ReversionTest("pnorm", "qnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3, DiffFunc = sqrt)#function(x, y) y/x)
 
-
-# f1 <- function(x, y) x*y # * and / actions are relatively safe when it comes to floating point "drift"
-# f2 <- function(x, y) x/y # * and / actions are relatively safe
-# ArgsF1 <- "f1"
-# ArgsF2 <- "f2"
-# Args3 <- list(x = c(-4:(-1), 1:4), y = c(-4:(-1), 1:4))
-# LenExpected <- prod(unlist(lapply(Args3, length)))
-# Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1)
-
-# Values should be close to zero with subtraction as delta-function
-#Result <- unlist(Df$Delta)
-#Result, rep(FALSE, LenExpected)

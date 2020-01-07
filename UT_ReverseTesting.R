@@ -31,7 +31,7 @@ test_that("eps", {
   e.r <- c(1.694066e-21, 1.355253e-20, 2.168404e-19, 1.734723e-18, 1.387779e-17,
            2.220446e-16, 1.776357e-15, 1.421085e-14, 1.136868e-13, 1.818989e-12, 1.455192e-11 )
   expect_equal(e.r, eps(x))
-  
+
   x <- 10^(-300:300)
   e.r <- sapply(x, eps.pracma) # function copied from 'pracma' package
   expect_identical(e.r, eps(x))
@@ -73,7 +73,6 @@ test_that(".NearlyEqual", {
     Result[which(is.na(Result))] <- (Diff / ( X.Abs + Y.Abs )) < eps
   }
   
-  
   x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
   y <- 10 + rep(0, length(x))
   e.r <- c(TRUE, TRUE, TRUE, FALSE, FALSE)
@@ -82,10 +81,45 @@ test_that(".NearlyEqual", {
   x <- 10^(-50:+50)
   expect_identical(all(.NearlyEqual(x, x)), TRUE)
   
-  x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
+  # Test the near-zero case
+  expect_equal(c(FALSE, FALSE, TRUE),
+               .NearlyEqual(c(0,1,1), c(1,0,1), eps = 1e-10))
+  
+  # Compare with original algorithm
+  x <- 10 + c(1e-14, 1e-13, 1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
   y <- 10 + rep(0, length(x))
   expect_identical(.NearlyEqual.old(x, y), .NearlyEqual(x, y))
 })
+
+
+
+test_that(".DeltaEps", {
+  x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
+  y <- 10 + rep(0, length(x))
+  e.r <- c(TRUE, TRUE, TRUE, FALSE, FALSE)
+  Result <- .DeltaEps(x, y)
+  expect_equal(e.r, Result == 0)
+  e.r[e.r==TRUE] <- 0
+  e.r[e.r==FALSE] <- abs(x-y) / (x + y)
+  expect_equal(e.r, Result)
+
+  # Test the near-zero case
+  expect_equal(c(1e-10 * .Machine$double.xmin, 1e-10 * .Machine$double.xmin, 0),
+               .DeltaEps(c(0,1,1), c(1,0,1), eps = 1e-10))
+  
+  
+  x <- 10^(-50:+50)
+  expect_identical(all(.DeltaEps(x, x) == 0), TRUE)
+  
+  x <- runif(1000, -20, 20)
+  y <- x + runif(1000, -0.1, 0.1)
+  expect_equal(.NearlyEqual(x, y), .DeltaEps(x, y) == 0)
+  
+  x <- runif(1000, -0.1, 0.1)
+  y <- x + runif(1000, -1e-5, 1e-5)
+  expect_equal(.NearlyEqual(x, y), .DeltaEps(x, y) == 0)
+})
+
 
 
 test_that("ReversionTest: Correct Output", {
