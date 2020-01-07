@@ -13,7 +13,7 @@ library(reshape2)
 #Result <- ReversionTest("qnorm", "pnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3)
 #Result <- ReversionTest("qnorm", "pnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3, DiffFunc = sqrt)#function(x, y) y/x)
 #Result <- ReversionTest("qlogitnorm", "plogitnorm", ToIterate =  list(mean = -4:4, sd=1))
-Result <- ReversionTest("pnorm", "qnorm", ToIterate = list(seq(-2, 2, 0.5), mean = -5:5), sd = 1)
+Result <- ReversionTest("qlogitnorm", "plogitnorm", ToIterate = list(seq(0.05, 0.95, 0.05), mean = -50:50), sd = 1)
 
 # Convert expanded data frame to matrix or vector
 names(Result)[1] <- "q"
@@ -25,12 +25,26 @@ Result.M <- data.matrix(Result.M[-1])
 Colors <- colorRampPalette(c("white",
                             "black"))(2)
 heatmap.2(Result.M, Rowv = NA, Colv = NA, dendrogram = "none",
-       main = "", xlab = "p", ylab = "mean/sd",
+       main = "Logitnorm TRUE/FALSE", xlab = "p", ylab = "mean",
        key.xlab="Delta", key=TRUE, symkey=FALSE, key.title = "Colors & Histogram",
        density.info="histogram", trace = "none",
        col = Colors)
 
 
+Result <- ReversionTest("qlogitnorm", "plogitnorm", ToIterate = list(seq(0.05, 0.95, 0.05), mean = -50:50), sd = 1, DiffFunc = .DeltaEps)
+names(Result)[1] <- "q"
+Result.M <- dcast(Result[-3], q ~ mean, value.var = "Delta")
+rownames(Result.M) <- Result.M$q
+Result.M <- data.matrix(Result.M[-1])
+
+Colors <- colorRampPalette(c("white",
+                             "red",
+                             "black"))(100)
+heatmap.2(Result.M, Rowv = NA, Colv = NA, dendrogram = "none",
+          main = "Logitnorm Relative Diff", xlab = "p", ylab = "mean",
+          key.xlab="Delta", key=TRUE, symkey=FALSE, key.title = "Colors & Histogram",
+          density.info="histogram", trace = "none",
+          col = Colors)
 
 
 #Colors <- colorRampPalette(brewer.pal(8, "RdPu"))(20)
