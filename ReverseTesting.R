@@ -55,7 +55,8 @@ eps <- function(x = 1.0) {
 #' @value .NearlyEqual returns TRUE or FALSE.
 #' .DeltaSub gives the absolute difference between the values, .DeltaRatio 
 #' the absolute value of x/y.
-#' @author Michael G. Rozman, moved to R and made vector compatible to R by Jan Seifert
+#' @author Michael G. Rozman
+#' @author Moved to R, made vector compatible, and modified by Jan Seifert
 #' @references Rozman, M. Z. (2015) [What Every Programmer Should Know About Floating-Point Arithmetic](https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf); accessed 2020-01-06
 .NearlyEqual <- function(x, y, eps = 1e-10) {
   X.Abs <- abs(x)
@@ -66,8 +67,7 @@ eps <- function(x = 1.0) {
   Result <- Diff / (X.Abs + Y.Abs) < eps
   # Correct, where x or x_ is zero or both are extremely close to it
   # Relative error is less meaningful here
-  # Jan Seifert: probably, the author made a mistake here. TODO: VERIFY
-  Which <- which(x == 0 | y == 0 | Diff < .Machine$double.xmin)
+  Which <- which(x == 0 | y == 0 | (X.Abs + Y.Abs) < .Machine$double.xmin)
   Result[Which] <- (Diff[Which] < eps * .Machine$double.xmin)
   # Handles infinities
   Result[which(x == y)] <- TRUE
@@ -91,7 +91,7 @@ eps <- function(x = 1.0) {
   # Correct, where x or y is zero or both are extremely close to it
   # Relative error is less meaningful here
   # Jan Seifert: probably, the author made a mistake here. TODO: VERIFY
-  Which2 <- which(x == 0 | y == 0 | Diff < .Machine$double.xmin)
+  Which2 <- which(x == 0 | y == 0 | (X.Abs + Y.Abs) < .Machine$double.xmin)
   Which2 <- setdiff(Which2, Which1)
   Result[Which2] <- eps * .Machine$double.xmin
 
