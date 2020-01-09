@@ -1,0 +1,214 @@
+---
+title: "Notes on Reversion Testing"
+author: "Jan Seifert"
+date: "7-1-2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+source("./ReverseTestChart.R")
+
+```
+
+
+
+## Floating Point Precision / Numerical Stability
+
+How can it be that this is true in R?
+```{r}
+0.1000000000000000055511151231257827021181583404541015625 == 0.1
+```
+
+Isn't R supposed to be precise? As a tool for data scientists and statisticians it should be. And, yet, there are many funny examples. Watch this:
+
+```{r}
+0.1 + 0.2 == 0.3      # This will be FALSE. You want proof? You got it.
+(0.1 + 0.2) - 0.3     # ==>  5.551115e-17
+0.2 + 0.1 -0.1 == 0.2 # FALSE again
+```
+
+Such phenomena are quite normal when it comes to floating point arithmetic. If we are not careful, we can end up with code that drifts, , and finally breaks away. Hopefully, I can help someone out there to make it easier to (dis-) prove the numeric stability of your code.
+
+Look at some of the sources at the end if you are interesting in finding out more.
+
+
+## Testing logitnorm functions
+
+I wanted to verify the distribution functions of the logit-norm probability distribution. I had several test cases, already. Now I wanted to extend the range of my tests and I had the idea to use the cumulative distribution function CDF and its inverse to test them against each other, like this: ```{r, f.invers(f(x))}```.
+
+These are the functions in question. The logit function is a helper function to transform the normal values according to the logit-norm function.
+
+```{r}
+logit <- function( p ) {
+  log(p/(1-p))
+}
+
+logit.inv <- function( x ) {
+  #0.5 * (1 + tanh(0.5*x)) # alternative version that might be more precise
+  1/(1+exp(-x))
+}
+
+plogitnorm <- function(q, mean = 0, sd = 1, lower.tail = TRUE) { 
+  pnorm(logit(q), mean = mean, sd = sd, lower.tail = lower.tail)
+}
+qlogitnorm <- function(p, mean = 0, sd = 1, lower.tail = TRUE) { 
+  logit.inv(qnorm(p, mean = mean, sd = sd, lower.tail = lower.tail))
+}
+```
+
+### Forward Test: plogitnorm(qlogitnorm(x))
+
+Let us start with a rather rough result just to get a first impression. This function call will give us ```FALSE``` for every value that isn't close to zero. The required tolerance I chose was 2^-26. That is the same value that R uses in it's ```all.equal```.
+
+```{r}
+Result <- ReversionTest("qlogitnorm", "plogitnorm", 
+                        ToIterate = list(seq(0.05, 0.95, 0.05), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)))
+```
+
+```{r echo=FALSE}
+plot(Result)
+```
+
+That looks terrible! Let us take a closer look. This time we will quantify the difference from zero.
+```{r}
+Result <- ReversionTest("qlogitnorm", "plogitnorm", 
+                        ToIterate = list(seq(0.05, 0.95, 0.05), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)), 
+                        DiffFunc = .DeltaEps)
+print(Result)
+```
+The ouput shows that over 30% of the values are not equivalent to zero. The range of the differences to zero goes up to 0.90!!! The following histogram gives us more details. The y axis shows the size of the differences. A number of -4 on the y axis means that the values were smaller that 2^{-4} = 0.0625 (and larger than 2^{-5} = 0.03125). If the function worked perectly, all values would be on the bottommost bar. But that is somewhat unrealistic. Still the picture is disturbing.
+
+```{r echo=FALSE}
+hist(Result)
+```
+
+Another plot shows us how the lack of precision is related to the input values of the function. 
+```{r echo=FALSE}
+plot(Result)
+```
+
+Two things are obvious:
+1. The bottom part shows the biggest problems. When the mean of the normal distribution is over 30 then it is almost impossible to get useful values. 
+2. The zebra pattern is a sign that the combination of mean and sd lead to the problem. A higher sd leads to more errors when the mean is also higher.
+
+
+### Forward Test: qlogitnorm(plogitnorm(x))
+
+```{r}
+Result <- ReversionTest("plogitnorm", "qlogitnorm", 
+                        ToIterate = list(seq(0.05, 0.95, 0.05), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)))
+```
+
+```{r echo=FALSE}
+plot(Result)
+```
+
+```{r}
+Result <- ReversionTest("plogitnorm", "qlogitnorm", 
+                        ToIterate = list(seq(0.05, 0.95, 0.05), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)), 
+                        DiffFunc = .DeltaEps)
+print(Result)
+```
+
+```{r echo=FALSE}
+hist(Result)
+```
+
+The histogram shows a similar picture.
+
+Another plot shows us how the lack of precision is related to the input values of the function. 
+```{r echo=FALSE}
+plot(Result)
+```
+
+To investigate the issue further we have to take a look at the functions that are called in the logitnorm functions and these are the logit and the normal distribution functions includign their respective inverse.
+
+
+
+### The Normal Distribution
+
+```{r}
+Result <- ReversionTest("pnorm", "qnorm", 
+                        ToIterate = list(seq(-3, +3, 0.4), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)), 
+                        DiffFunc = .DeltaEps)
+print(Result)
+```
+
+The printout tells us there are only a few values above zero and their are still somewhat small. Going the other way round we get a great result. 
+
+```{r}
+Result <- ReversionTest("qnorm", "pnorm", 
+                        ToIterate = list(seq(0.05, 0.95, 0.05), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)), 
+                        DiffFunc = .DeltaEps)
+print(Result)
+```
+
+All values are near to perfect. The difference between the two roundtrips is understandable. In the first call we ask a lot of the normal functions  because we ask for a value of 3 with a mean of -50. That means we really got to the extremes of the distribution. 
+
+```{r echo=FALSE}
+#Result <- ReversionTest("pnorm", "qnorm", 
+#                        ToIterate = list(seq(-3, +3, 0.4), 
+#                                         mean = seq(-50,50,5), 
+#                                         sd = c(0.1, 1, 10, 20, 50)), 
+#                        DiffFunc = .DeltaEps)
+#print(Result$Data[Result$Data$Delta != 0, ])
+```
+
+### The Logit Functions
+
+The normal distribution does not seem to be the cause for the basd performance. That means it's either the logits or the combination of both logit and normal functions.
+
+```{r}
+Result <- ReversionTest("logit", "logit.inv", 
+                        ToIterate = list(seq(0.01, 0.99, 0.01)), 
+                        DiffFunc = .DeltaEps)
+```
+
+```{r echo=FALSE}
+print(Result)
+hist(Result)
+plot(Result)
+```
+
+
+
+## Hints on the Implementation
+
+###.NearlyEqual
+
+1. The original code uses ```{c, FLT_MIN}```. According to the C standard this is the minimum normalized positive floating-point number, ```{c, b**(emin - 1)}``` (see ISO/IEC 9899:TC2 5.2.4.2.2/11). In the normalised form there is precisely one non-zero digit in front of the decimal point. According to the [R manuals](https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/.Machine) ```{r, .Machine$double.xmin}``` "is the smallest non-zero normalized floating-point number". Hence, that must be the according substitute.
+2. The line if ```{c, (a == 0 || b == 0 || (Diff < Float.MIN_NORMAL))}``` is supposedly incorrect. Neither does it make sense nor fits it the description. Therefore, I go with ```{c, if (a == 0 || b == 0 || (absA + absB < Float.MIN_NORMAL))}``` (as suggested by Borgwardt in [the floating point guide](https://floating-point-gui.de/errors/comparison/).
+
+
+
+## Sources, References, Further Reading
+* Dawson, B. (2012) [Comparing Floating Point Numbers, 2012 Edition](https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/)
+* Morey, R. (2016) [Numerical pitfalls in computing variance](https://www.r-bloggers.com/numerical-pitfalls-in-computing-variance/). accessed at 20200107
+* [R Inferno](https://www.burns-stat.com/pages/Tutor/R_inferno.pdf)
+* Goldberg, D. (1991) [What Every Computer Scientist Should Know About Floating-Point Arithmetic]( https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html)
+* StackExchange Question ["Solutions for floating point rounding errors"] (https://softwareengineering.stackexchange.com/questions/202843/solutions-for-floating-point-rounding-errors)
+* [The Python Tutorial, ch. 15](https://docs.python.org/3/tutorial/floatingpoint.html)
+* Rozman, M. G. [floating Point Guide](https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf)
+* Schatz, V. [What you never wanted to know about floating point but will be forced to find out](https://www.volkerschatz.com/science/float.html)
+
+
+
+## Further Ideas
+
+Further work probably on speed improvements?
+* https://cran.r-project.org/web/packages/doParallel/vignettes/gettingstartedParallel.pdf
+
