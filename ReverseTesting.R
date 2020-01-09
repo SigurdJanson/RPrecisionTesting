@@ -190,6 +190,7 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc = .Nea
   # get data.frame with all combinations of vector elements in ToIterate
   Df <- expand.grid(ToIterate)
   # Force the names to the original ones because expand.grid replaces "" with "Var?"
+  if(is.null(names(ToIterate))) names(ToIterate) <- ""
   names(Df) <- names(ToIterate)
   
   # Go, iterate!
