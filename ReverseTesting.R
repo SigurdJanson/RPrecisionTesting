@@ -36,12 +36,14 @@ eps <- function(x = 1.0) {
 #' .DeltaSub
 #' @author Jan Seifert
 #' @describeIn .NearlyEqual
-.DeltaSub <- function( x, y, eps = 2^-26 ) ifelse(abs(x - y) < eps, 0, abs(x - y))
+.DeltaSub <- function( x, y, eps = sqrt(.Machine$double.eps) ) 
+  ifelse( abs(x - y) < eps, 0, abs(x - y) )
 
 #' .DeltaRatio
 #' @author Jan Seifert
 #' @describeIn .NearlyEqual
-.DeltaRatio <- function( x, y, eps = 2^-26 ) abs(x - y)/x
+.DeltaRatio <- function( x, y, eps = sqrt(.Machine$double.eps) ) 
+  ifelse( abs(x - y) < eps, 0, abs(x - y)/x )
 
 
 #' .NearlyEqual
@@ -69,7 +71,7 @@ eps <- function(x = 1.0) {
 #' @author Michael G. Rozman
 #' @author Moved to R, made vector compatible, and modified by Jan Seifert
 #' @references Rozman, M. Z. (2015) [What Every Programmer Should Know About Floating-Point Arithmetic](https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf); accessed 2020-01-06
-.NearlyEqual <- function(x, y, eps = 2^-26) {
+.NearlyEqual <- function(x, y, eps = sqrt(.Machine$double.eps)) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
   Diff = abs(x - y)
@@ -89,7 +91,7 @@ eps <- function(x = 1.0) {
 #' .DeltaEps
 #' @describeIn .NearlyEqual Quantify difference when |x-y| > eps (unlike .NearlyEqual 
 #' that gives only TRUE/FALSE).
-.DeltaEps <- function(x, y, eps = 2^-26) {
+.DeltaEps <- function(x, y, eps = sqrt(.Machine$double.eps)) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
   Diff = abs(x - y)
@@ -101,7 +103,6 @@ eps <- function(x = 1.0) {
   
   # Correct, where x or y is zero or both are extremely close to it
   # Relative error is less meaningful here
-  # Jan Seifert: probably, the author made a mistake here. TODO: VERIFY
   Which2 <- which(x == 0 | y == 0 | (X.Abs + Y.Abs) < .Machine$double.xmin)
   Which2 <- setdiff(Which2, Which1)
   Result[Which2] <- eps * .Machine$double.xmin
@@ -183,7 +184,7 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc = .Nea
   }
   #
   delta <- match.fun(DiffFunc)
-  Precision <- 1e-10
+  Precision <- sqrt(.Machine$double.eps)
 
   # CODE
   # get data.frame with all combinations of vector elements in ToIterate
