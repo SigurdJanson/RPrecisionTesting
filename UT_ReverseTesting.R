@@ -6,7 +6,7 @@
 library(testthat)
 
 source("./ReverseTesting.R")
-
+source("D:/Texte/02 Wissen/!Ideenschmiede/R-package 'Usability'/LNB/src/R/logitnormal.R")
 
 # HELPER FUNCTIONS ----
 
@@ -31,6 +31,19 @@ test_that("eps", {
   e.r <- c(1.694066e-21, 1.355253e-20, 2.168404e-19, 1.734723e-18, 1.387779e-17,
            2.220446e-16, 1.776357e-15, 1.421085e-14, 1.136868e-13, 1.818989e-12, 1.455192e-11 )
   expect_equal(e.r, eps(x))
+  
+  # Taken from the Matlab documentation
+  expect_equal(2^(-53), eps(1/2))
+  expect_equal(2^(-51), eps(2))
+  expect_equal(2^(-1074), eps(0))
+  expect_equal(as.numeric(c(NA, NA)), eps(c(Inf, -Inf)))
+  expect_equal(as.numeric(NA), eps(as.numeric(NA)))
+  
+  # On machines that support IEEE floating point arithmetic, eps is approximately 2.2204e-16 for double precision
+  x <- 1.0
+  e.r <- .Machine$double.eps
+  expect_equal(e.r, eps(x))
+  
 
   x <- 10^(-300:300)
   e.r <- sapply(x, eps.pracma) # function copied from 'pracma' package
@@ -44,7 +57,7 @@ test_that("eps", {
 
 
 test_that(".NearlyEqual", {
-  .NearlyEqual.old <- function(x, y, eps = 1e-10) {
+  .NearlyEqual.old <- function(x, y, eps = 2^-26) {
     X.Abs <- abs(x)
     Y.Abs <- abs(y)
     Diff = abs(x - y)
@@ -73,9 +86,9 @@ test_that(".NearlyEqual", {
     Result[which(is.na(Result))] <- (Diff / ( X.Abs + Y.Abs )) < eps
   }
   
-  x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
+  x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6)
   y <- 10 + rep(0, length(x))
-  e.r <- c(TRUE, TRUE, TRUE, FALSE, FALSE)
+  e.r <- c(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE)
   expect_equal(e.r, .NearlyEqual(x, y))
   
   x <- 10^(-50:+50)
@@ -96,7 +109,7 @@ test_that(".NearlyEqual", {
 test_that(".DeltaEps", {
   x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
   y <- 10 + rep(0, length(x))
-  e.r <- c(TRUE, TRUE, TRUE, FALSE, FALSE)
+  e.r <- c(TRUE, TRUE, TRUE, TRUE, TRUE)
   Result <- .DeltaEps(x, y)
   expect_equal(e.r, Result == 0)
   e.r[e.r==TRUE] <- 0
@@ -118,6 +131,14 @@ test_that(".DeltaEps", {
   x <- runif(1000, -0.1, 0.1)
   y <- x + runif(1000, -1e-5, 1e-5)
   expect_equal(.NearlyEqual(x, y), .DeltaEps(x, y) == 0)
+  
+  x <- ReversionTest("qlogitnorm", "plogitnorm", 
+                     ToIterate = list(seq(0.05, 0.95, 0.05), mean = seq(-50,50,5), sd = c(0.1, 1:10)), 
+                     DiffFunc = .DeltaEps)
+  y <- ReversionTest("qlogitnorm", "plogitnorm", 
+                     ToIterate = list(seq(0.05, 0.95, 0.05), mean = seq(-50,50,5), sd = c(0.1, 1:10)))
+  x$Data$Delta <- (x$Data$Delta == 0)
+  expect_equal(x$Data, y$Data)
 })
 
 
@@ -128,7 +149,7 @@ test_that("ReversionTest: Correct Output", {
   Args3 <- list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9))
   
   # ReversionTest: Do we basically get the right output? ----
-  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 3)
+  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 3)$Data
   expect_is(Df, "data.frame")
   expect_type(Df, "list")
   expect_identical(ncol(Df), as.integer(length(Args3)+2))
@@ -187,7 +208,7 @@ test_that("ReversionTest: Precondition Checks", {
                "Objekt 'NON..SENSE' nicht gefunden")
   # sqrt accepts only 1 argument, so this should not work
   expect_error(ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 3, DiffFunc = sqrt),
-               "2 Argumente an")
+               "3 Argumente an")
 })
 
 
@@ -200,7 +221,7 @@ test_that("ReversionTest: Diff-Functions", {
   ArgsF2 <- "f2"
   Args3 <- list(x = c(-4:(-1), 1:4), y = c(-4:(-1), 1:4))
   LenExpected <- prod(unlist(lapply(Args3, length)))
-  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1)
+  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1)$Data
   expect_is(Df, "data.frame")
   expect_type(Df, "list")
   expect_identical(ncol(Df), as.integer(length(Args3)+2))
@@ -209,13 +230,15 @@ test_that("ReversionTest: Diff-Functions", {
   expect_equal(Df$Delta, rep(TRUE, LenExpected))
   
   # Values should be close to zero with ratio as delta-function
-  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = function(x, y) y/x)
+  MyDiff <- function(x, y, eps) y/x + (0*eps)
+  Result <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = MyDiff)
+  Df <- Result$Data
   expect_equal(unlist(Df$Delta), rep(1, LenExpected))
   
-  MyDiff <- function(x, y) 9
+  MyDiff <- function(x, y, eps) 9 + (0*eps)
   Args3 <- list(x = 1:99, y = 99:1)
   LenExpected <- prod(unlist(lapply(Args3, length)))
-  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = MyDiff)
+  Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = MyDiff)$Data
   expect_equal(unlist(Df$Delta), rep(9, LenExpected))
 })
 

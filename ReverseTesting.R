@@ -1,23 +1,31 @@
-
+#TODO: check number of arguments for DiffFunc with length(formals(DiffFunc))
+#TODO: implement ulp
 
 # FLOATING POINT PRECISION ----
 
 #' eps
-#' Distance from x to the next largest double-precision number.
+#' Floating-point relative accuracy. The distance from x to the next 
+#' largest double-precision number.
 #' @usage eps(x = 1.0)
 #' @param x scalar or numerical vector or matrix
 #' @details \code{d=eps(x)} is the positive distance from \code{abs(x)} 
 #' to the next larger floating point number in double precision.
+#' 
+#' On machines that support IEEE floating point arithmetic, eps is approximately 
+#' 2.2204e-16 for double precision. That is also true for R.
 #' @value A numeric vector
+#' @seealso \code{\link{.Machine}}
 #' @example eps(1^seq(-2, 10, 1))
 #' If x is an array, eps(x) will return eps(max(abs(x))). 
 eps <- function(x = 1.0) {
   stopifnot(is.numeric(x))
   
   x <- abs(x)
+  WhichNA <- which(is.infinite(x) | is.na(x))
   WhichMin <- which(x <  .Machine$double.xmin)
   e <- 2^floor(log2(x)) * .Machine$double.eps
   e[WhichMin] <- .Machine$double.xmin
+  e[WhichNA] <- NA
   e
 }
 
@@ -28,21 +36,24 @@ eps <- function(x = 1.0) {
 #' .DeltaSub
 #' @author Jan Seifert
 #' @describeIn .NearlyEqual
-.DeltaSub <- function( x, y ) abs(x - y)
+.DeltaSub <- function( x, y, eps = 2^-26 ) ifelse(abs(x - y) < eps, 0, abs(x - y))
 
 #' .DeltaRatio
 #' @author Jan Seifert
 #' @describeIn .NearlyEqual
-.DeltaRatio <- function( x, y ) abs(x - y)/x
+.DeltaRatio <- function( x, y, eps = 2^-26 ) abs(x - y)/x
 
 
 #' .NearlyEqual
 #' Functions to determine whether two values can be treated as equal.
 #' @param x,y Numbers to be compared
-#' @param eps Acceptable margin of error. Default is 1e-10.
+#' @param eps Acceptable margin of error (epsilon). Default is 2^-26 (approx. 1.49e-8).
 #' @details .DeltaSub may be misleading in many cases. Problems with floating
 #' point accuracy are relative to the range of the numbers. And a delta of 0.01
 #' is far more troublesome when x = 0.1 compared to an x = 1000.
+#' 
+#' The default value for eps has been chosen because it is the tolerance used in the 
+#' R function [all.equal][all.equal()].
 #' @note .NearlyEqual passes tests for many important special cases, but it also 
 #' uses some non-obvious logic. (1) it has to use a completely different 
 #' definition of error margin when x or y is zero, because the classical 
@@ -58,7 +69,7 @@ eps <- function(x = 1.0) {
 #' @author Michael G. Rozman
 #' @author Moved to R, made vector compatible, and modified by Jan Seifert
 #' @references Rozman, M. Z. (2015) [What Every Programmer Should Know About Floating-Point Arithmetic](https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf); accessed 2020-01-06
-.NearlyEqual <- function(x, y, eps = 1e-10) {
+.NearlyEqual <- function(x, y, eps = 2^-26) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
   Diff = abs(x - y)
@@ -75,10 +86,10 @@ eps <- function(x = 1.0) {
 }
 
 
-#' .DeltaEps    ############TODO############ Not yet finished
+#' .DeltaEps
 #' @describeIn .NearlyEqual Quantify difference when |x-y| > eps (unlike .NearlyEqual 
 #' that gives only TRUE/FALSE).
-.DeltaEps <- function(x, y, eps = 1e-10) {
+.DeltaEps <- function(x, y, eps = 2^-26) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
   Diff = abs(x - y)
@@ -115,16 +126,17 @@ eps <- function(x = 1.0) {
 #' @param KeyVar The variable in ToIterate for which the test is for. Either an list index 
 #' or a name as string (partial strings allowed). 
 #' @param ...  additional arguments to be passed to f and finv. 
-#' @param DiffFunc A function to quantify the difference between expected value and computed value. 
-#' If Null, ReversionTest will use the absolute ratio.
-#' @details Each list element of \code{ToIterate} is a vector that contains the values 
-#' that shall be used for the tests. Each list element must be named after the argument 
-#' that will be passed on to f and finv. 
+#' @param DiffFunc A function to quantify the difference between expected 
+#' value and computed value. If Null, ReversionTest will use the absolute ratio.
+#' @details Each list element of \code{ToIterate} is a vector that contains 
+#' the values that shall be used for the tests. Each list element must be 
+#' named after the argument that will be passed on to f and finv. The 'DiffFunc' 
+#' must allow the arguments x, y, and eps (see [.NearlyEqual][.NearlyEqual()]).
+#' @value The result is a list of class 'ReversionTest'.
 #' @example TotalResult <- ReversionTest("qnorm", "pnorm", ToIterate=list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3)
-ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) {
+ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc = .NearlyEqual, ...) {
   .forwardreverse <- function(x, ...) {
-    ## example: do.call("dnorm", list(-1:1, sd = -2, mean = 0))
-    
+    ## example: do.call("dnorm", list(-1:1, sd = -2, mean = 0, ...))
     Args.Forward <- append(x, list(...))
     Result <- do.call(f, Args.Forward)
     Args.Backward <- x
@@ -135,13 +147,19 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) 
   }
 
   # PRECONDITIONS
-  if(!is.character(f) || !is.character(finv)) stop("Need function name for 'f' and 'finv' as string")
+  if(!is.character(f) || !is.character(finv)) 
+    stop("Need function name for 'f' and 'finv' as string")
+  TestResult <- list(Functions = list(f, finv))
   f <- match.fun(f)
   finv <- match.fun(finv)
+  #
   if(!is.list(ToIterate)) stop("List expected for 'ToIterate'")
   if(length(ToIterate) < 1) stop("Nothing to iterate through")
-  if(!all(unlist(lapply(ToIterate, is.atomic )))) stop("'ToIterate' must contain only atomic numeric vectors")
-  if(!all(unlist(lapply(ToIterate, is.numeric)))) stop("'ToIterate' must contain only atomic numeric vectors")
+  if(!all(unlist(lapply(ToIterate, is.atomic )))) 
+    stop("'ToIterate' must contain only atomic numeric vectors")
+  if(!all(unlist(lapply(ToIterate, is.numeric)))) 
+    stop("'ToIterate' must contain only atomic numeric vectors")
+  #
   if(is.numeric(KeyVar)) {
     if(KeyVar <= 0) stop("Key variable must be 1 or greater")
     if(KeyVar > length(ToIterate)) stop("Index of key variable out of bounds")
@@ -149,12 +167,12 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) 
     KeyVar <- pmatch(KeyVar, names(ToIterate))
     if(is.na(KeyVar)) stop("Key variable not found in ToIterate")
   }
-
   # Fix order in case of unnamed arguments  
   ArgNameLen <- nchar(names(ToIterate))
   if(any(ArgNameLen > 0)) { # there are unnamed arguments
     # Better safe than sorry
-    if(sum(ArgNameLen == 0) > 1) stop("This function can handle only a single unnamed argument")
+    if(sum(ArgNameLen == 0) > 1) 
+      stop("This function can handle only a single unnamed argument")
     # An unnamed variable must come first
     OldOrder <- names(ToIterate)
     ToIterate <- ToIterate[c(which(ArgNameLen == 0), which(ArgNameLen != 0))]
@@ -163,11 +181,9 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) 
     KeyVar <- which(names(NewOrder) == names(OldOrder[KeyVar]))
     if(length(KeyVar) == 0L) KeyVar <- 1 # Correction because 'which' does not catch empty strings
   }
-  if(missing(DiffFunc)) {
-    delta <- match.fun(.NearlyEqual)
-  } else {
-    delta <- match.fun(DiffFunc)
-  }
+  #
+  delta <- match.fun(DiffFunc)
+  Precision <- 1e-10
 
   # CODE
   # get data.frame with all combinations of vector elements in ToIterate
@@ -177,9 +193,14 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc, ...) 
   
   # Go, iterate!
   Df$Result <- apply(Df, 1, .forwardreverse, ...)
-  Df["Delta"]  <- delta(Df[[KeyVar]], Df$Result)
+  Df["Delta"]  <- delta(Df[[KeyVar]], Df$Result, eps = Precision)
+  # Build result object
+  TestResult <- append(TestResult, list(Diff = DiffFunc, Data = Df))
+  TestResult <- append(TestResult, list(Variables = names(ToIterate)))
+  TestResult <- append(TestResult, list(Precision = Precision, TestTime = Sys.time()))
+  class(TestResult) <- "ReversionTest"
   
-  return(Df)
+  return(TestResult)
 }
 
 
