@@ -136,7 +136,8 @@ test_that(".DeltaEps", {
                      ToIterate = list(seq(0.05, 0.95, 0.05), mean = seq(-50,50,5), sd = c(0.1, 1:10)), 
                      DiffFunc = .DeltaEps)
   y <- ReversionTest("qlogitnorm", "plogitnorm", 
-                     ToIterate = list(seq(0.05, 0.95, 0.05), mean = seq(-50,50,5), sd = c(0.1, 1:10)))
+                     ToIterate = list(seq(0.05, 0.95, 0.05), mean = seq(-50,50,5), sd = c(0.1, 1:10)),
+                     DiffFunc = .NearlyEqual)
   x$Data$Delta <- (x$Data$Delta == 0)
   expect_equal(x$Data, y$Data)
 })
