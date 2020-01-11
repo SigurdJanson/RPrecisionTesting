@@ -34,6 +34,33 @@ Such phenomena are quite normal when it comes to floating point arithmetic. If w
 Look at some of the sources at the end if you are interesting in finding out more.
 
 
+## About Epsilons
+
+To explain the issue let me choose a trivial starting point. Integer numbers on a computer are limited to whole numbers. When you work with integer numbers you have a limited precision. Everything between two whole numbers will get lost. If you compute 
+
+```{r}
+3 %/% 2
+```
+
+you loose 0.5. And of course, if that is not the final result and you need to put this into another transformation the error can increase as you can see here:
+```{r}
+10 ^ (3 %/% 2)
+# ... whereas ...
+10 ^ (3 / 2)
+```
+
+
+A computer can only store a limited amount of numbers. And with integers the precision is limited to one because one is the difference between two neighbouring integer values. Let me call that minimum difference between integers the *integer epsilon*. Please note, that I just invented that term. Computer scientists usually do not refer to that as integer epsilon. I merely invent this term for didactic reasons.
+
+![Precision of integer and floating-point numbers compared](.img/Epsilon_Comparison.svg)
+
+We have a similar situation when it comes to floating point numbers. They are stored in a limited amount of memory and have, thus, limited precision. But there are a few important differences compared to integer.
+
+* Integer numbers can exactly represent numbers of the decimal system. The way floating point numbers are stored that is not possible. A number 0.3 cannot be stored exactly as 0.3. It has to be stored as the closest power of two.
+* The epsilon between two floating point numbers is not fixed. For all integer numbers the  epsilon is exactly 1. For floating point numbers the epsilon for 1.0 is $2^{-26} \approx 1.5e-8.$. But for 2E20 the epsilon is $2^{14} = 16384$. The epsilon is the of 1.0 is often referred to as the machine epsilon.
+* Your "computer" tries to make the best of the situation when doing floating point operations. When you use the computer always truncates decimal places. A floating point algorithm typically uses the nearest available even number.
+
+
 ## Testing logitnorm functions
 
 I wanted to verify the distribution functions of the logit-norm probability distribution. I had several test cases, already. Now I wanted to extend the range of my tests and I had the idea to use the cumulative distribution function CDF and its inverse to test them against each other, like this: ```{r, f.invers(f(x))}```.
@@ -160,12 +187,12 @@ print(Result)
 All values are near to perfect. The difference between the two roundtrips is understandable. In the first call we ask a lot of the normal functions  because we ask for a value of 3 with a mean of -50. That means we really got to the extremes of the distribution. 
 
 ```{r echo=FALSE}
-#Result <- ReversionTest("pnorm", "qnorm", 
-#                        ToIterate = list(seq(-3, +3, 0.4), 
-#                                         mean = seq(-50,50,5), 
-#                                         sd = c(0.1, 1, 10, 20, 50)), 
-#                        DiffFunc = .DeltaEps)
-#print(Result$Data[Result$Data$Delta != 0, ])
+Result <- ReversionTest("pnorm", "qnorm", 
+                        ToIterate = list(seq(-3, +3, 0.4), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)), 
+                        DiffFunc = .DeltaEps)
+print(Result$Data[Result$Data$Delta != 0, ])
 ```
 
 ### The Logit Functions
@@ -174,15 +201,34 @@ The normal distribution does not seem to be the cause for the basd performance. 
 
 ```{r}
 Result <- ReversionTest("logit", "logit.inv", 
-                        ToIterate = list(seq(0.01, 0.99, 0.01)), 
+                        ToIterate = list(c(2^seq(-100,-1), 1-2^seq(-2,-53))), 
                         DiffFunc = .DeltaEps)
 ```
 
+The first one is a perfect result. I tried many things to break it. I fed it with values very close to zero, then very close to one. I fed it in many values in tiny steps. The result was immaculate. When I tried it the other way round I stretched the limits even further. In the roundtrip above the logit function returns values ranging around from -69.31 to 36.74. I pushed it even further.
+
+```{r}
+Result <- ReversionTest("logit.inv", "logit", 
+                        ToIterate = list(seq(-1000, 1000, 0.1)), 
+                        DiffFunc = .DeltaEps)
+```
+
+These results are not as perfect as before. A round trip of a reversion test is actually not reversible. The results were still great. There was a strange peak of errors in the range from around 30 to 38 and some of those results deviated from the expected values by almost 1%. I might look into that later. For our investigation of the logitnorm functions that does not seem to be the problem. And aside from that strange phenomenon it works great.
+
 ```{r echo=FALSE}
 print(Result)
-hist(Result)
-plot(Result)
 ```
+
+I further looked into the range of definition. Mathematically logit is defined for values in the range $]0, 1[$. Practically the function runs into a saturation where varying input values yield no different output anymore. So the real range of logit function as implemented here is $[7.4505 \cdot 10^{-09}, 0.99999999441206455]$. The logit.inv function has a theoretical definition of $[-\infty, \infty]$, but the practical range is between $[-709.7827, 36.7368]$ (values rounded to 4 digits). Especially with the logit.inv it is interesting to note how asyymetric the range is.
+
+```{r echo=FALSE}
+#print(SaturationLimit(logit, c(0.5, 0), Limit = -Inf), digits = 20) #0.99999999441206455
+#print(SaturationLimit(logit, c(0.5, 0), Limit = -Inf), digits = 20)
+#print(SaturationLimit(logit.inv, c(0, -2000), Limit = 0), digits = 20) #-709.7827128964127
+#print(SaturationLimit(logit.inv, c(0, 200), Limit = 1), digits = 20)   #36.736800573999062
+```
+
+These results 
 
 
 
@@ -198,7 +244,7 @@ plot(Result)
 ## Sources, References, Further Reading
 * Dawson, B. (2012) [Comparing Floating Point Numbers, 2012 Edition](https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/)
 * Morey, R. (2016) [Numerical pitfalls in computing variance](https://www.r-bloggers.com/numerical-pitfalls-in-computing-variance/). accessed at 20200107
-* [R Inferno](https://www.burns-stat.com/pages/Tutor/R_inferno.pdf)
+* Burns, P. [R Inferno](https://www.burns-stat.com/pages/Tutor/R_inferno.pdf)
 * Goldberg, D. (1991) [What Every Computer Scientist Should Know About Floating-Point Arithmetic]( https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html)
 * StackExchange Question ["Solutions for floating point rounding errors"] (https://softwareengineering.stackexchange.com/questions/202843/solutions-for-floating-point-rounding-errors)
 * [The Python Tutorial, ch. 15](https://docs.python.org/3/tutorial/floatingpoint.html)
