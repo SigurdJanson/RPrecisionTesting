@@ -9,16 +9,24 @@ source("./ReverseTesting.R")
 require(gplots)
 library(reshape2)
 
+#' hist.ReversionTest
+#' @note This is still a draft
 hist.ReversionTest <- function( TestResult, freq = TRUE, ... ) {
-  eps <- -26 # Assumed default epsilon
+  # The exponent of eps in a power of 2
+  ExponentEps <- log2(TestResult$Precision) 
   
   Results <- TestResult$Data$Delta
+  if(is.logical(Results)) {
+    warning("Histogram does not work for logical data")
+    return(invisible(NULL))
+  }
   
-  # Brea points and bar labels
-  if(length(Results) / (abs(eps)+1) < 20)
-    Breaks <- pretty( seq(eps, 0, 1), n, min.n = 5)
-  else
-    Breaks <- eps:0
+  # Break points and bar labels
+  if(length(Results) / (abs(ExponentEps)+1) < 20) {
+    N <- max(length(Results) %/% 40L, -ExponentEps %/% 5L)
+    Breaks <- rev( pretty( seq(ExponentEps, 0, 1), n = N, min.n = 5) )
+  } else
+    Breaks <- ExponentEps:0
   BreakLabels <- c("-∞", paste(Breaks)) # paste("2", Breaks, sep="^")
   Breaks <- c(0, 2^Breaks)
   
@@ -39,48 +47,69 @@ hist.ReversionTest <- function( TestResult, freq = TRUE, ... ) {
   invisible(h)
 }
 
+
+
 #' plot.ReversionTest
 #' @note This function is limited to specific purposes. It may not work for any use case.
 plot.ReversionTest <- function( TestResult ) {
   # 1. Data frame in long form has to be transformed
   # 
-  names(TestResult$Data)[1] <- "key"
+  names(TestResult$Data)[1] <- "Key" #TODO: that looks risky
   # Remove 'Result' column and transform to matrix
   ResultCol <- which(names(TestResult$Data) == "Result") 
-  Result.M <- dcast(TestResult$Data[-ResultCol], key ~ mean + sd, value.var = "Delta")
-  rownames(Result.M) <- Result.M$key
-  Result.M <- data.matrix(Result.M[-1])
+  if(length(TestResult$Variables) > 1) {
+    Result.M <- dcast(TestResult$Data[-ResultCol], Key ~ mean + sd, value.var = "Delta")
+  } else {
+    Result.M <- as.matrix(TestResult$Data[-ResultCol], ncol = ncol(TestResult$Data))
+  }
+  rownames(Result.M) <-  Result.M[,"Key"] 
+  Result.M <- data.matrix(Result.M[,-1])
   Result.M <- t(Result.M)
+  if(all(Result.M == 0)) warning("All values are zero")
   
   # 2. Set color palette
   # Get vector of unique values
   Singletons <- unique(unlist( apply(Result.M, 1, unique) ))
-  if(length(Singletons) == 2) {
+  if(length(Singletons) <= 2) {
     Colors <- colorRampPalette(c("red", "white"))(2)
   } else {
-    #Range <- range(Singletons, na.rm = TRUE)
-    Range <- min(length(Singletons) %/% 1, 400)
-    Colors <- colorRampPalette(c("white",
-                                 "red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red","red",
-                                 "black", "black", "black", "black", "black", "black", "black", "black", "black", "black"))(Range)
+    Range <- min(length(Singletons) %/% 1, 100)
+    # All deltas >= 0.5 shall be black
+    BlackN <- max((max(Singletons) - 0.5), 0) / diff(range(Singletons))
+    BlackN <- BlackN * Range
+    # All deltas >= 0.1 shall be red
+    RedN <- (0.5 - max(0.1, min(Singletons))) / diff(range(Singletons))
+    RedN <- RedN * Range
+    # All deltas < 0.1 shall be light red
+    LightN <- max((0.1 - min(Singletons)), 0) / diff(range(Singletons))
+    LightN <- LightN * Range
+    Colors <- colorRampPalette(c("white", 
+                                 rep("lightcoral", LightN),
+                                 rep("red", RedN),
+                                 rep("black", BlackN)))(Range)
   }
   #. Plot heat map
   # Title
   Main <- sprintf("%s -> %s", TestResult$Functions[[1]], TestResult$Functions[[2]])
-  KeyXLab <- ifelse(length(Singletons) > 2, "Delta", "Different - Same")
-  YLab <- paste(TestResult$Variables[-1], collapse=", ")
+  KeyXLab <- ifelse(length(Singletons) == 2, "Delta", "Different - Same")
   XLab <- "Key"
   
   if(length(TestResult$Variables) > 1) {
+    YLab <- paste(TestResult$Variables[-1], collapse=", ")
     heatmap.2(Result.M, Rowv = NA, Colv = NA, dendrogram = "none",
               main = Main, xlab = XLab, ylab = YLab,
               key.xlab=KeyXLab, key=TRUE, symkey=FALSE, key.title = "Colors & Histogram",
               density.info="histogram", trace = "none",
               col = Colors)
   } else {
-    barplot(Result.M)
+    YLab <- ifelse(length(Singletons) == 2, "Different - Same", "Delta")
+    barplot(Result.M,
+            main = Main, xlab = XLab, ylab = YLab,
+            ylim = c(0,1))
   }
 }
+
+
 
 #' print.ReversionTest
 #' @note This is still a draft
@@ -97,7 +126,7 @@ print.ReversionTest <- function( TestResult ) {
     else
       Sequence <- paste(Values, collapse = ", ")
     Label <- TestResult$Variables[v]
-    if(Label == "") Label <- "Key"
+    if(is.null(Label) || Label == "") Label <- "Key"
     cat( format(Label, width=20), Sequence, "\n" )
   }
 
@@ -108,76 +137,61 @@ print.ReversionTest <- function( TestResult ) {
   
   
   # Print test results
-  #Singletons <- unique(unlist( apply(TestResult$Data$Result, 1, unique) ))
   Singletons <- unique(TestResult$Data[["Delta"]])
-  NValues <- length(TestResult$Data[["Delta"]]) # nrow(TestResult$Data)*ncol(TestResult$Data)
+  NValues <- length(TestResult$Data[["Delta"]]) 
   Zeroes <- sum(Result$Data[["Delta"]] == 0)
   Ratio <- Zeroes / NValues
   
   cat("\n")
   cat("Results", "\n")
   cat( format("Values created:", width=15), NValues, "\n" )
-  cat( format("Delta range:", width=15), range(Singletons), "\n" )
-  cat( format("Delta == 0:", width=15), Zeroes, "\n" )
-  cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
+
+  if(Zeroes == NValues) {
+    cat( "All values are zero. The result is flawless.", "\n" )
+  } else {
+    cat( format("Delta range:", width=15), range(Singletons), "\n" )
+    cat( format("Delta == 0:", width=15), Zeroes, "\n" )
+    cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
+  }
 }
 
 
 
 summary.ReversionTest <- function( TestResult ) {
   # Print test results
-  Singletons <- unique(unlist( apply(TestResult$Data, 1, unique) ))
-  NValues <- nrow(TestResult$Data)*ncol(TestResult$Data)
-  Zeroes <- sum(Result$Data == 0)
+  Singletons <- unique(TestResult$Data[["Delta"]])
+  NValues <- nrow(TestResult$Data)*ncol(TestResult$Data[["Delta"]])
+  Zeroes <- sum(Result$Data[["Delta"]] == 0)
   Ratio <- Zeroes / NValues
   
   cat("Results", "\n")
-  cat( format("Value range:", width=15), range(Singletons), "\n" )
-  cat( format("Values == 0:", width=15), Zeroes, "\n" )
-  cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
+  if(Zeroes == NValues) {
+    cat( "All values are zero. The result is flawless.", "\n" )
+  } else {
+    cat( format("Value range:", width=15), range(Singletons), "\n" )
+    cat( format("Values == 0:", width=15), Zeroes, "\n" )
+    cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
+    cat( format("Delta < 10%:", width=15), sum(Result$Data[["Delta"]] < .10) / NValues, "\n" )
+    cat( format("Delta < 25%:", width=15), sum(Result$Data[["Delta"]] < .25) / NValues, "\n" )
+    cat( format("Delta < 50%:", width=15), sum(Result$Data[["Delta"]] < .50) / NValues, "\n" )
+  }
 }
 
-
-#Result <- ReversionTest("qnorm", "pnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3)
-#Result <- ReversionTest("qnorm", "pnorm", ToIterate =  list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3, DiffFunc = sqrt)#function(x, y) y/x)
-#Result <- ReversionTest("qlogitnorm", "plogitnorm", ToIterate =  list(mean = -4:4, sd=1))
-
-# Forward
-# Result <- ReversionTest("qlogitnorm", "plogitnorm", 
-#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
-#                                          mean = seq(-50,50,5), 
-#                                          sd = c(0.1, 1, 10, 20, 50)))
-# plot(Result)
+# Result <- ReversionTest("logit", "logit.inv",
+#                         ToIterate = list(c(2^seq(-100,-1), 1-2^seq(-2,-100))),
+#                         DiffFunc = .DeltaEps)
 # print(Result)
-# 
-# Result <- ReversionTest("qlogitnorm", "plogitnorm", 
-#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
-#                                          mean = seq(-50,50,5), 
-#                                          sd = c(0.1, 1, 10, 20, 50)), 
+
+# Result <- ReversionTest("logit.inv", "logit",
+#                         ToIterate = list(seq(-200, 200, 0.001)),
 #                         DiffFunc = .DeltaEps)
-# plot(Result)
-# hist(Result)
-
-# For testing: the chart shall be identical to a chart created
-# with Diff Function .NearlyEqual
-#Result$Data$Delta <- (Result$Data$Delta == 0)
-#plot(Result)
-
-
-# Backward
-# Result <- ReversionTest("plogitnorm", "qlogitnorm", 
-#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
-#                                          mean = seq(-50,50,5), 
-#                                          sd = c(0.1, 1, 10, 20, 50)))
-# plot(Result)
-# 
-# Result <- ReversionTest("plogitnorm", "qlogitnorm", 
-#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
-#                                          mean = seq(-50,50,5), 
-#                                          sd = c(0.1, 1, 10, 20, 50)), 
+# print(Result)
+# Result <- ReversionTest("logit.inv", "logit",
+#                         ToIterate = list(seq(32, 37, 0.001)),
 #                         DiffFunc = .DeltaEps)
-# plot(Result)
+# print(Result)
 # hist(Result)
+# plot(Result)
 
 
 #Colors <- colorRampPalette(brewer.pal(8, "RdPu"))(20)
@@ -196,16 +210,5 @@ summary.ReversionTest <- function( TestResult ) {
 #rampCol2 <- colorRampPalette(c("red", "red", "darkred"))(100-(midpoint+1))
 #Colors <- c(rampCol1,rampCol2)
 
-# Convert data to matrix
 
-
-# CHART ----
-#Colors <- colorRampPalette(c("white",
-#                             "lightcoral",
-#                             "red", "red",
-#                             "darkred", "darkred", "darkred", 
-#                             "black", "black", "black", "black", "black", "black", "black"))(14)
-
-
-#heatmap(data, scale="column", cexRow=1.5, labRow=paste("new_", rownames(data),sep=""), col= colorRampPalette(brewer.pal(8, "Blues"))(25))
 #levelplot(your_data, col.regions=heat.colors)
