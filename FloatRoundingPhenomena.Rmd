@@ -1,0 +1,49 @@
+---
+title: "Floating Point Rounding Phenomena"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r}
+((0.1 + 0.2) - 0.1) / 0.2
+# However, ...
+((0.1 + 0.2) - 0.1) / 0.2 == 1
+```
+
+$i \over 2^j$ with i and j being integers.
+
+
+```{r echo=FALSE}
+# Now let us plot this to understand it better
+curve(((0.1 + x) - 0.1)/x, -1e-16, 1e-16, 1000)
+```
+
+This weird behaviour is the result of rounding. We can show that in two ways.
+
+1. We try the simplified version that does not show the saw tooth pattern:
+```{r echo=FALSE}
+curve(((x) )/x, -1e-16, 1e-16, 1000)
+```
+
+2. We can add information:
+
+```{r echo=FALSE}
+curve(((x + 0.1) - 0.1)/x, -1e-16, 1e-16, 1000)
+# Find the x for which x+0.1 is an exact float and plot this x between (-1e-16, 1e-16)
+#points(-2^seq(-54, -1, length.out = 1000), rep(1, 1000))
+```
+
+
+
+
+== Further Reading
+
+Demmel, J. () [Basic Issues in Floating Point Arithmetic and Error Analysis](https://people.eecs.berkeley.edu/~demmel/cs267/lecture21/lecture21.html)
+
+https://randomascii.wordpress.com/2017/06/19/sometimes-floating-point-math-is-perfect/
+
+
