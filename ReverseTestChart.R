@@ -5,9 +5,10 @@
 # - https://www.r-graph-gallery.com/215-the-heatmap-function.html
 # - http://compbio.ucsd.edu/making-heat-maps-r/
 
-source("./ReverseTesting.R")
+#source("./ReverseTesting.R")
 require(gplots)
 library(reshape2)
+
 
 #' hist.ReversionTest
 #' @note This is still a draft
@@ -73,20 +74,21 @@ plot.ReversionTest <- function( TestResult ) {
   if(length(Singletons) <= 2) {
     Colors <- colorRampPalette(c("red", "white"))(2)
   } else {
-    Range <- min(length(Singletons) %/% 1, 100)
+    N <- min(length(Singletons) %/% 1, 100, na.rm = TRUE)
+    Range <- range(Singletons, na.rm = TRUE)
     # All deltas >= 0.5 shall be black
-    BlackN <- max((max(Singletons) - 0.5), 0) / diff(range(Singletons))
-    BlackN <- BlackN * Range
+    BlackN <- max((max(Range) - 0.5), 0) / diff(Range)
+    BlackN <- BlackN * N
     # All deltas >= 0.1 shall be red
-    RedN <- (0.5 - max(0.1, min(Singletons))) / diff(range(Singletons))
-    RedN <- RedN * Range
+    RedN <- (0.5 - max(0.1, min(Range))) / diff(Range)
+    RedN <- RedN * N
     # All deltas < 0.1 shall be light red
-    LightN <- max((0.1 - min(Singletons)), 0) / diff(range(Singletons))
-    LightN <- LightN * Range
+    LightN <- max((0.1 - min(Range)), 0) / diff(Range)
+    LightN <- LightN * N
     Colors <- colorRampPalette(c("white", 
                                  rep("lightcoral", LightN),
                                  rep("red", RedN),
-                                 rep("black", BlackN)))(Range)
+                                 rep("black", BlackN)))(N)
   }
   #. Plot heat map
   # Title
@@ -137,19 +139,23 @@ print.ReversionTest <- function( TestResult ) {
   
   
   # Print test results
-  Singletons <- unique(TestResult$Data[["Delta"]])
-  NValues <- length(TestResult$Data[["Delta"]]) 
-  Zeroes <- sum(Result$Data[["Delta"]] == 0)
-  Ratio <- Zeroes / NValues
+  Deltas <- TestResult$Data[["Delta"]]
+  Singletons <- unique(Deltas)
+  NValues <- length(Deltas)
+  NValuesCorr <- sum(!is.na(Deltas)) # length(Deltas)
+  Zeroes <- sum(Result$Data[["Delta"]] == 0, na.rm = TRUE)
+  Ratio <- Zeroes / NValuesCorr
+  NNA   <- sum(is.na(TestResult$Data[["Delta"]]))
   
   cat("\n")
   cat("Results", "\n")
   cat( format("Values created:", width=15), NValues, "\n" )
-
+  cat( format("NA:", width=15), NNA, "\n" )
+  
   if(Zeroes == NValues) {
     cat( "All values are zero. The result is flawless.", "\n" )
   } else {
-    cat( format("Delta range:", width=15), range(Singletons), "\n" )
+    cat( format("Delta range:", width=15), range(Singletons, na.rm = TRUE), "\n" )
     cat( format("Delta == 0:", width=15), Zeroes, "\n" )
     cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
   }
@@ -159,10 +165,12 @@ print.ReversionTest <- function( TestResult ) {
 
 summary.ReversionTest <- function( TestResult ) {
   # Print test results
-  Singletons <- unique(TestResult$Data[["Delta"]])
-  NValues <- nrow(TestResult$Data)*ncol(TestResult$Data[["Delta"]])
-  Zeroes <- sum(Result$Data[["Delta"]] == 0)
-  Ratio <- Zeroes / NValues
+  Deltas <- TestResult$Data[["Delta"]]
+  Singletons <- unique(Deltas)
+  NValues <- nrow(TestResult$Data)*ncol(Deltas)
+  NNA     <- sum(is.na(Deltas)) # count of NAs
+  Zeroes  <- sum(Deltas == 0, na.rm = TRUE)
+  Ratio   <- Zeroes / NValues
   
   cat("Results", "\n")
   if(Zeroes == NValues) {
@@ -171,44 +179,27 @@ summary.ReversionTest <- function( TestResult ) {
     cat( format("Value range:", width=15), range(Singletons), "\n" )
     cat( format("Values == 0:", width=15), Zeroes, "\n" )
     cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
-    cat( format("Delta < 10%:", width=15), sum(Result$Data[["Delta"]] < .10) / NValues, "\n" )
-    cat( format("Delta < 25%:", width=15), sum(Result$Data[["Delta"]] < .25) / NValues, "\n" )
-    cat( format("Delta < 50%:", width=15), sum(Result$Data[["Delta"]] < .50) / NValues, "\n" )
+    cat( format("Delta < 10%:", width=15), sum(Deltas < .10) / NValues, "\n" )
+    cat( format("Delta < 25%:", width=15), sum(Deltas < .25) / NValues, "\n" )
+    cat( format("Delta < 50%:", width=15), sum(Deltas < .50) / NValues, "\n" )
   }
 }
 
-# Result <- ReversionTest("logit", "logit.inv",
-#                         ToIterate = list(c(2^seq(-100,-1), 1-2^seq(-2,-100))),
-#                         DiffFunc = .DeltaEps)
-# print(Result)
-
-# Result <- ReversionTest("logit.inv", "logit",
-#                         ToIterate = list(seq(-200, 200, 0.001)),
-#                         DiffFunc = .DeltaEps)
-# print(Result)
-# Result <- ReversionTest("logit.inv", "logit",
-#                         ToIterate = list(seq(32, 37, 0.001)),
+# Code for Debugging ----
+# Result <- ReversionTest("plogitnorm", "qlogitnorm",
+#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
+#                                          mean = seq(-50,50,5), 
+#                                          sd = c(0.1, 1, 10, 20, 50)), 
 #                         DiffFunc = .DeltaEps)
 # print(Result)
 # hist(Result)
 # plot(Result)
-
-
-#Colors <- colorRampPalette(brewer.pal(8, "RdPu"))(20)
-
-# breaks   <- seq(from=min(range(TotalResult)), to=max(range(TotalResult)), length.out=100)
-# midpoint <- which.max(breaks < 1e-5)
-# Colors   <- colorRampPalette(c("white"))(midpoint)
-# midpoint <- which.max(breaks < 0.1)
-# Colors   <- c(Colors, colorRampPalette(c("lightcoral"))(midpoint-length(Colors)))
-# midpoint <- which.max(breaks < 0.25)
-# Colors   <- c(Colors, colorRampPalette(c("red"))(midpoint-length(Colors)))
-# midpoint <- which.max(breaks < 0.5)
-# Colors   <- c(Colors, colorRampPalette(c("darkred"))(midpoint-length(Colors)))
-# midpoint <- which.max(breaks < 1)
-# Colors   <- c(Colors, colorRampPalette(c("black"))(midpoint-length(Colors)))
-#rampCol2 <- colorRampPalette(c("red", "red", "darkred"))(100-(midpoint+1))
-#Colors <- c(rampCol1,rampCol2)
-
-
-#levelplot(your_data, col.regions=heat.colors)
+# 
+# Result <- ReversionTest("plogitnorm.subopt", "qlogitnorm.subopt",
+#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
+#                                          mean = seq(-50,50,5), 
+#                                          sd = c(0.1, 1, 10, 20, 50)), 
+#                         DiffFunc = .DeltaEps)
+# print(Result)
+# hist(Result)
+# plot(Result)
