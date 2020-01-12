@@ -1,7 +1,7 @@
 #TODO: check number of arguments for DiffFunc with length(formals(DiffFunc))
 #TODO: implement ulp
 
-
+source("./eps.R")
 
 # DELTA FUNCTIONS ----
 
