@@ -11,7 +11,7 @@ source("D:/Texte/02 Wissen/!Ideenschmiede/R-package 'Usability'/LNB/src/R/logitn
 # HELPER FUNCTIONS ----
 
 test_that(".NearlyEqual", {
-  .NearlyEqual.old <- function(x, y, eps = 2^-26) {
+  .NearlyEqual.old <- function(x, y, tol = 2^-26) {
     X.Abs <- abs(x)
     Y.Abs <- abs(y)
     Diff = abs(x - y)
@@ -27,17 +27,17 @@ test_that(".NearlyEqual", {
     # {
     #   # x or x_ is zero or both are extremely close to it
     #   # Relative error is less meaningful here
-    #   return (Diff < (eps*.Machine$double.xmin));
+    #   return (Diff < (tol*.Machine$double.xmin));
     # } 
     Which <- which(x == 0 || y == 0 || Diff < .Machine$double.xmin)
     Which <- setdiff(which(Result == TRUE), Which) # ignore 'which(x == x_)'
-    Result[Which] <- (Diff[Which] < eps*.Machine$double.xmin)
+    Result[Which] <- (Diff[Which] < tol*.Machine$double.xmin)
     # else {
     #     # use relative error
-    #     return (Diff / (X.Abs + Y.Abs) < eps);
+    #     return (Diff / (X.Abs + Y.Abs) < tol);
     #   }
     # }
-    Result[which(is.na(Result))] <- (Diff / ( X.Abs + Y.Abs )) < eps
+    Result[which(is.na(Result))] <- (Diff / ( X.Abs + Y.Abs )) < tol
   }
   
   x <- 10 + c(1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6)
@@ -50,7 +50,7 @@ test_that(".NearlyEqual", {
   
   # Test the near-zero case
   expect_equal(c(FALSE, FALSE, TRUE),
-               .NearlyEqual(c(0,1,1), c(1,0,1), eps = 1e-10))
+               .NearlyEqual(c(0,1,1), c(1,0,1), tol = 1e-10))
   
   # Compare with original algorithm
   x <- 10 + c(1e-14, 1e-13, 1e-12, 1e-11, 1e-10, 1e-9, 1e-8, 1e-7)
@@ -70,10 +70,12 @@ test_that(".DeltaEps", {
   e.r[e.r==FALSE] <- abs(x-y) / (x + y)
   expect_equal(e.r, Result)
 
+  # Test with NAs
+  expect_equal(c(NA, rep(0,4), NA), .DeltaEps(c(1:5, NA), c(NA, 2:6)))
+  
   # Test the near-zero case
   expect_equal(c(1e-10 * .Machine$double.xmin, 1e-10 * .Machine$double.xmin, 0),
-               .DeltaEps(c(0,1,1), c(1,0,1), eps = 1e-10))
-  
+               .DeltaEps(c(0,1,1), c(1,0,1), tol = 1e-10))
   
   x <- 10^(-50:+50)
   expect_identical(all(.DeltaEps(x, x) == 0), TRUE)
@@ -185,12 +187,12 @@ test_that("ReversionTest: Diff-Functions", {
   expect_equal(Df$Delta, rep(TRUE, LenExpected))
   
   # Values should be close to zero with ratio as delta-function
-  MyDiff <- function(x, y, eps) y/x + (0*eps)
+  MyDiff <- function(x, y, tol) y/x + (0*tol)
   Result <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = MyDiff)
   Df <- Result$Data
   expect_equal(unlist(Df$Delta), rep(1, LenExpected))
   
-  MyDiff <- function(x, y, eps) 9 + (0*eps)
+  MyDiff <- function(x, y, tol) 9 + (0*tol)
   Args3 <- list(x = 1:99, y = 99:1)
   LenExpected <- prod(unlist(lapply(Args3, length)))
   Df <- ReversionTest(ArgsF1, ArgsF2, ToIterate = Args3, KeyVar = 1, DiffFunc = MyDiff)$Data

@@ -8,25 +8,25 @@ source("./eps.R")
 #' .DeltaSub
 #' @author Jan Seifert
 #' @describeIn .NearlyEqual
-.DeltaSub <- function( x, y, eps = sqrt(.Machine$double.eps) ) 
-  ifelse( abs(x - y) < eps, 0, abs(x - y) )
+.DeltaSub <- function( x, y, tol = sqrt(.Machine$double.eps) ) 
+  ifelse( abs(x - y) < tol, 0, abs(x - y) )
 
 #' .DeltaRatio
 #' @author Jan Seifert
 #' @describeIn .NearlyEqual
-.DeltaRatio <- function( x, y, eps = sqrt(.Machine$double.eps) ) 
-  ifelse( abs(x - y) < eps, 0, abs(x - y)/x )
+.DeltaRatio <- function( x, y, tol = sqrt(.Machine$double.eps) ) 
+  ifelse( abs(x - y) < tol, 0, abs(x - y)/x )
 
 
 #' .NearlyEqual
 #' Functions to determine whether two values can be treated as equal.
 #' @param x,y Numbers to be compared
-#' @param eps Acceptable margin of error (epsilon). Default is 2^-26 (approx. 1.49e-8).
+#' @param tol Acceptable margin of error (tolerance). Default is 2^-26 (approx. 1.49e-8).
 #' @details .DeltaSub may be misleading in many cases. Problems with floating
 #' point accuracy are relative to the range of the numbers. And a delta of 0.01
 #' is far more troublesome when x = 0.1 compared to an x = 1000.
 #' 
-#' The default value for eps has been chosen because it is the tolerance used in the 
+#' The default value for tol has been chosen because it is the tolerance used in the 
 #' R function [all.equal][all.equal()].
 #' @note .NearlyEqual passes tests for many important special cases, but it also 
 #' uses some non-obvious logic. (1) it has to use a completely different 
@@ -43,17 +43,17 @@ source("./eps.R")
 #' @author Michael G. Rozman
 #' @author Moved to R, made vector compatible, and modified by Jan Seifert
 #' @references Rozman, M. Z. (2015) [What Every Programmer Should Know About Floating-Point Arithmetic](https://www.phys.uconn.edu/~rozman/Courses/P2200_15F/downloads/floating-point-guide-2015-10-15.pdf); accessed 2020-01-06
-.NearlyEqual <- function(x, y, eps = sqrt(.Machine$double.eps)) {
+.NearlyEqual <- function(x, y, tol = sqrt(.Machine$double.eps)) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
   Diff = abs(x - y)
   
   # Use relative error, by default
-  Result <- Diff / (X.Abs + Y.Abs) < eps
+  Result <- Diff / (X.Abs + Y.Abs) < tol
   # Correct, where x or x_ is zero or both are extremely close to it
   # Relative error is less meaningful here
   Which <- which(x == 0 | y == 0 | (X.Abs + Y.Abs) < .Machine$double.xmin)
-  Result[Which] <- (Diff[Which] < eps * .Machine$double.xmin)
+  Result[Which] <- (Diff[Which] < tol * .Machine$double.xmin)
   # Handles infinities
   Result[which(x == y)] <- TRUE
   Result
@@ -61,15 +61,15 @@ source("./eps.R")
 
 
 #' .DeltaEps
-#' @describeIn .NearlyEqual Quantify difference when |x-y| > eps (unlike .NearlyEqual 
+#' @describeIn .NearlyEqual Quantify difference when |x-y| > tol (unlike .NearlyEqual 
 #' that gives only TRUE/FALSE).
-.DeltaEps <- function(x, y, eps = sqrt(.Machine$double.eps)) {
+.DeltaEps <- function(x, y, tol = sqrt(.Machine$double.eps)) {
   X.Abs <- abs(x)
   Y.Abs <- abs(y)
   Diff = abs(x - y)
   
   # Handles infinities
-  # Set all to 0 first, correct later where x != y
+  # Set all to 0 first, overwrite later where x != y
   Which1 <- which(x == y)
   Result <- rep(0, length(x))
   
@@ -77,14 +77,18 @@ source("./eps.R")
   # Relative error is less meaningful here
   Which2 <- which(x == 0 | y == 0 | (X.Abs + Y.Abs) < .Machine$double.xmin)
   Which2 <- setdiff(Which2, Which1)
-  Result[Which2] <- eps * .Machine$double.xmin
+  Result[Which2] <- tol * .Machine$double.xmin
 
   # Use relative error, by default
   ErrorRel <- Diff / (X.Abs + Y.Abs)
-  Which3 <- which( ErrorRel > eps )
+  Which3 <- which( ErrorRel > tol )
   Which3 <- setdiff(setdiff(Which3, Which2), Which1)
   Result[Which3] <- ErrorRel[Which3]
-
+  
+  # Finally handle NAs (function 'which' ignores them)
+  Result[is.na(x)] <- NA
+  Result[is.na(y)] <- NA
+  
   Result
 }
 
@@ -104,7 +108,7 @@ source("./eps.R")
 #' @details Each list element of \code{ToIterate} is a vector that contains 
 #' the values that shall be used for the tests. Each list element must be 
 #' named after the argument that will be passed on to f and finv. The 'DiffFunc' 
-#' must allow the arguments x, y, and eps (see [.NearlyEqual][.NearlyEqual()]).
+#' must allow the arguments x, y, and tol (see [.NearlyEqual][.NearlyEqual()]).
 #' @value The result is a list of class 'ReversionTest'.
 #' @example TotalResult <- ReversionTest("qnorm", "pnorm", ToIterate=list(mean = -4:4, sd=c(0.5, 1.5), c(0.1, 0.2, 0.9)), KeyVar = 3)
 ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc = .NearlyEqual, ...) {
@@ -167,7 +171,7 @@ ReversionTest <- function(f, finv, ToIterate = NULL, KeyVar = 1, DiffFunc = .Nea
   
   # Go, iterate!
   Df$Result <- apply(Df, 1, .forwardreverse, ...)
-  Df["Delta"]  <- delta(Df[[KeyVar]], Df$Result, eps = Precision)
+  Df["Delta"]  <- delta(Df[[KeyVar]], Df$Result, tol = Precision)
   # Build result object
   TestResult <- append(TestResult, list(Diff = DiffFunc, Data = Df))
   TestResult <- append(TestResult, list(Variables = names(ToIterate)))
