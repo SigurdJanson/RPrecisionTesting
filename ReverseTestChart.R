@@ -5,7 +5,7 @@
 # - https://www.r-graph-gallery.com/215-the-heatmap-function.html
 # - http://compbio.ucsd.edu/making-heat-maps-r/
 
-#source("./ReverseTesting.R")
+source("./ReverseTesting.R")
 require(gplots)
 library(reshape2)
 
@@ -66,8 +66,8 @@ plot.ReversionTest <- function( TestResult ) {
   rownames(Result.M) <-  Result.M[,"Key"] 
   Result.M <- data.matrix(Result.M[,-1])
   Result.M <- t(Result.M)
-  if(all(Result.M == 0)) warning("All values are zero")
-  
+  if(all(Result.M == 0, na.rm = TRUE)) warning("All values are zero or NA")
+
   # 2. Set color palette
   # Get vector of unique values
   Singletons <- unique(unlist( apply(Result.M, 1, unique) ))
@@ -157,6 +157,7 @@ print.ReversionTest <- function( TestResult ) {
   } else {
     cat( format("Delta range:", width=15), range(Singletons, na.rm = TRUE), "\n" )
     cat( format("Delta == 0:", width=15), Zeroes, "\n" )
+    cat( format("Delta != 0:", width=15), NValuesCorr-Zeroes, "\n" )
     cat( format("Ratio 0/All:", width=15), Ratio, "\n" )
   }
 }
@@ -185,21 +186,51 @@ summary.ReversionTest <- function( TestResult ) {
   }
 }
 
+
+
+#' head.ReversionTest
+#' The head function for ReversionTests gives the top 
+#' issues in the test results. That means it sorts the data 
+#' before removing the tail.
+#' @seealso head
+head.ReversionTest <- function( x, n = 6L, ... ) {
+  Deltas <- order(x$Data$Delta, decreasing = TRUE)
+  Deltas <- head(Deltas, n, ...)
+  x$Data[Deltas,]
+}
+
+
+
+
+
 # Code for Debugging ----
 # Result <- ReversionTest("plogitnorm", "qlogitnorm",
-#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
-#                                          mean = seq(-50,50,5), 
-#                                          sd = c(0.1, 1, 10, 20, 50)), 
+#                         ToIterate = list(seq(0.05, 0.95, 0.05),
+#                                          mean = seq(-50,50,5),
+#                                          sd = c(0.1, 1, 10, 20, 50)),
 #                         DiffFunc = .DeltaEps)
 # print(Result)
+# print(head(Result))
 # hist(Result)
 # plot(Result)
 # 
-# Result <- ReversionTest("plogitnorm.subopt", "qlogitnorm.subopt",
-#                         ToIterate = list(seq(0.05, 0.95, 0.05), 
-#                                          mean = seq(-50,50,5), 
-#                                          sd = c(0.1, 1, 10, 20, 50)), 
+# Result <- ReversionTest("qlogitnorm", "plogitnorm",
+#                         ToIterate = list(seq(0.05, 0.95, 0.05),
+#                                          mean = seq(-50,50,5),
+#                                          sd = c(0.1, 1, 10, 20, 50)),
 #                         DiffFunc = .DeltaEps)
 # print(Result)
+# print(head(Result))
+# hist(Result)
+# plot(Result)
+
+
+# Result <- ReversionTest("plogitnorm.subopt", "qlogitnorm.subopt",
+#                         ToIterate = list(seq(0.05, 0.95, 0.05),
+#                                          mean = seq(-50,50,5),
+#                                          sd = c(0.1, 1, 10, 20, 50)),
+#                         DiffFunc = .DeltaEps)
+# print(Result)
+# print(head(Result))
 # hist(Result)
 # plot(Result)
