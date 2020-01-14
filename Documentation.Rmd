@@ -29,6 +29,10 @@ Isn't R supposed to be precise? As a tool for data scientists and statisticians 
 0.2 + 0.1 -0.1 == 0.2 # FALSE again
 ```
 
+```{r}
+sum(c(1, 1e100, 1, -1e100)) # Will be 0, just wait
+```
+
 Such phenomena are quite normal when it comes to floating point arithmetic. If we are not careful, we can end up with code that drifts, , and finally breaks away. Hopefully, I can help someone out there to make it easier to (dis-) prove the numeric stability of your code.
 
 Look at some of the sources at the end if you are interesting in finding out more.
@@ -85,6 +89,7 @@ qlogitnorm <- function(p, mean = 0, sd = 1, lower.tail = TRUE) {
 }
 ```
 
+
 ### Forward Test: plogitnorm(qlogitnorm(x))
 
 Let us start with a rather rough result just to get a first impression. This function call will give us ```FALSE``` for every value that isn't close to zero. The required tolerance I chose was 2^-26. That is the same value that R uses in it's ```all.equal```.
@@ -125,7 +130,7 @@ Two things are obvious:
 2. The zebra pattern is a sign that the combination of mean and sd lead to the problem. A higher sd leads to more errors when the mean is also higher.
 
 
-### Forward Test: qlogitnorm(plogitnorm(x))
+### Forward Test: qlogitnorm(plogitnorm(x)) qlogitnorm.subopt
 
 ```{r}
 Result <- ReversionTest("plogitnorm", "qlogitnorm", 
@@ -138,14 +143,15 @@ Result <- ReversionTest("plogitnorm", "qlogitnorm",
 plot(Result)
 ```
 
-```{r}
+```{r echo=FALSE}
 Result <- ReversionTest("plogitnorm", "qlogitnorm", 
                         ToIterate = list(seq(0.05, 0.95, 0.05), 
                                          mean = seq(-50,50,5), 
-                                         sd = c(0.1, 1, 10, 20, 50)), 
+                                         sd = c(0.1, 1, 10, 20, 50)),
                         DiffFunc = .DeltaEps)
 print(Result)
 ```
+
 
 ```{r echo=FALSE}
 hist(Result)
@@ -209,7 +215,7 @@ The first one is a perfect result. I tried many things to break it. I fed it wit
 
 ```{r}
 Result <- ReversionTest("logit.inv", "logit", 
-                        ToIterate = list(seq(-1000, 1000, 0.1)), 
+                        ToIterate = list(seq(32, 38, 0.001)), 
                         DiffFunc = .DeltaEps)
 ```
 
@@ -217,9 +223,10 @@ These results are not as perfect as before. A round trip of a reversion test is 
 
 ```{r echo=FALSE}
 print(Result)
+plot(Result)
 ```
 
-I further looked into the range of definition. Mathematically logit is defined for values in the range $]0, 1[$. Practically the function runs into a saturation where varying input values yield no different output anymore. So the real range of logit function as implemented here is $[7.4505 \cdot 10^{-09}, 0.99999999441206455]$. The logit.inv function has a theoretical definition of $[-\infty, \infty]$, but the practical range is between $[-709.7827, 36.7368]$ (values rounded to 4 digits). Especially with the logit.inv it is interesting to note how asyymetric the range is.
+I further looked into the range of definition. Mathematically logit is defined for values in the range $]0, 1[$. Practically the function runs into a saturation where varying input values yield no different output anymore. So the real range of logit function as implemented here is $[7.4505 \cdot 10^{-09}, 0.99999999441206455]$. The logit.inv function has a theoretical definition of $[-\infty, \infty]$, but the practical range is between $[-709.7827, 36.7368]$ (values rounded to 4 digits). Especially with the logit.inv it is interesting to note how asymmetric the range is.
 
 ```{r echo=FALSE}
 #print(SaturationLimit(logit, c(0.5, 0), Limit = -Inf), digits = 20) #0.99999999441206455
@@ -228,9 +235,42 @@ I further looked into the range of definition. Mathematically logit is defined f
 #print(SaturationLimit(logit.inv, c(0, 200), Limit = 1), digits = 20)   #36.736800573999062
 ```
 
-These results 
+These results give us the important hint. If I define a logit-normal function with the underlying normal distribution having a mean of 50, ```qlogitnorm``` will receive values of 50 and more and feeds that into the logit.inv function. That cannot work when the practical range is limited to values below $36.74$. It would also explain the decrease of precision in the range of input values over 30. The function point algorithms are simply reaching the limits of their precision. Going beyond that logit.inv always returns the same thing and, misleadingly, it appears that high precision has returned.
+
+So, I rewrote the ```logit``` and ```logit.inv``` function to catch this and return ```NA``` (missing value), instead of a meaningless return value from ```logit.inv```.
+
+```{r}
+logit <- function( p ) {
+  # PRECONDITIONS
+  p[p < 7.4505805969238281e-09] <- NA
+  p[p > 0.9999999925494194] <- NA
+  # CODE
+  log(p/(1-p))
+}
+
+logit.inv <- function( x ) {
+  # PRECONDITIONS
+  # Check the range in which logit.inv is defined
+  x[x < -745.1332191049] <- NA
+  x[x > 37.3827075527515] <- NA
+  # CODE
+  exp(x) / (exp(x)+1)
+}
+```
 
 
+```{r}
+Result <- ReversionTest("plogitnorm", "qlogitnorm", 
+                        ToIterate = list(seq(0.05, 0.95, 0.05), 
+                                         mean = seq(-50,50,5), 
+                                         sd = c(0.1, 1, 10, 20, 50)), 
+                        DiffFunc = .DeltaEps)
+print(Result)
+plot(Result)
+hist(Result)
+```
+
+Now these results are a pretty sight! The errors are almost completely gone. I am very much convinced that I found the problem. 
 
 ## Hints on the Implementation
 
@@ -242,6 +282,10 @@ These results
 
 
 ## Sources, References, Further Reading
+
+Mächler (2012) gives further suggestions on how to improve precision. He also shows how to use the Rmpfr package to analyze numeric precision of R functions.
+
+* Mächler, M. (2012) [Accurately Computing log(1−exp(−|a|)). Assessed by the Rmpfr package](https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf)
 * Dawson, B. (2012) [Comparing Floating Point Numbers, 2012 Edition](https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/)
 * Morey, R. (2016) [Numerical pitfalls in computing variance](https://www.r-bloggers.com/numerical-pitfalls-in-computing-variance/). accessed at 20200107
 * Burns, P. [R Inferno](https://www.burns-stat.com/pages/Tutor/R_inferno.pdf)
